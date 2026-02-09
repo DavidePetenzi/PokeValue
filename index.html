@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://assets.tcgdex.net">
     <style>
         :root {
-            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #00f2ff 100%);
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #00e1ff 100%);
             --glass: rgba(255, 255, 255, 0.8);
             --glass-border: rgba(255, 255, 255, 0.3);
             --bg: #f8fafc;
@@ -164,7 +164,10 @@
                         </select>
                     </div>
                     <div class="row">
-                        <input type="text" id="search-in" placeholder="Card Name (e.g. Lugia)">
+                        <input type="text" id="search-in" placeholder="Card Name (e.g. Charizard)" style="flex: 3;">
+
+                        <input type="text" id="illustrator-in" placeholder="Artist" style="flex: 1;">
+                        
                         <!--<input type="text" id="num-in" placeholder="No." style="flex: 0.3;">-->
                         <input type="text" id="num-in" placeholder="No." style="width: 85px; flex-shrink: 0; padding: 0 8px; text-align: center;">
                     </div>
@@ -269,6 +272,7 @@
                 document.getElementById('search-in').addEventListener('keypress', e => e.key === 'Enter' && this.search());
                 document.getElementById('num-in').addEventListener('keypress', e => e.key === 'Enter' && this.search());
 
+                document.getElementById('illustrator-in').addEventListener('keypress', e => e.key === 'Enter' && this.search());
 
                 window.onscroll = function() {
                 const btn = document.getElementById("backToTop");
@@ -341,48 +345,54 @@
                 } catch (e) { console.error(e); }
             }
 
-            async search() {
-                const name = document.getElementById('search-in').value.trim();
-                const setId = document.getElementById('set-select').value;
-                const localId = document.getElementById('num-in').value.trim();
-                const loader = document.getElementById('loader');
-                const grid = document.getElementById('search-grid');
+    async search() {
+    const name = document.getElementById('search-in').value.trim();
+    const illustrator = document.getElementById('illustrator-in').value.trim();
+    const setId = document.getElementById('set-select').value;
+    const localId = document.getElementById('num-in').value.trim();
+    const loader = document.getElementById('loader');
+    const grid = document.getElementById('search-grid');
 
-                loader.classList.remove('hidden');
-                grid.innerHTML = '';
+    loader.classList.remove('hidden');
+    grid.innerHTML = '';
 
-                try {
-                    let results = [];
-                    // Case 1: Search within a specific set
-                    if (setId) {
-                        const res = await fetch(`${this.apiBase}/${this.state.lang}/sets/${setId}`);
-                        const data = await res.json();
-                        //results = data.cards;
-                        results = Array.isArray(data) ? data : (data.cards || []);
-                        if (name) results = results.filter(c => c.name.toLowerCase().includes(name.toLowerCase()));
-                        if (localId) results = results.filter(c => c.localId === localId);
-                    } 
-                    // Case 2: Global Search
-                    else {
-                        const params = new URLSearchParams();
-                        if (name) params.append('name', name);
-                        if (localId) params.append('localId', localId);
-                        const res = await fetch(`${this.apiBase}/${this.state.lang}/cards?${params.toString()}`);
-                        results = await res.json();
-                    }
+    try {
+        let results = [];
+        
+        // LOGIC UPDATE: Use Set-specific endpoint ONLY if we are NOT searching for an illustrator.
+        // (Set endpoints don't return artist data, so we must use Global Search for artist filtering)
+        if (setId && !illustrator) {
+            const res = await fetch(`${this.apiBase}/${this.state.lang}/sets/${setId}`);
+            const data = await res.json();
+            results = Array.isArray(data) ? data : (data.cards || []);
+            
+            if (name) results = results.filter(c => c.name.toLowerCase().includes(name.toLowerCase()));
+            if (localId) results = results.filter(c => c.localId === localId);
+        } 
+        // Global Search (Handles Name, Illustrator, LocalID, AND Set ID combination)
+        else {
+            const params = new URLSearchParams();
+            if (name) params.append('name', name);
+            if (localId) params.append('localId', localId);
+            if (illustrator) params.append('illustrator', illustrator); // Add Illustrator param
+            if (setId) params.append('set', setId); // Filter by set via params
 
-                    // Maintain original feature: Cards sorted by highest local ID on top
-                    results.sort((a, b) => b.localId.localeCompare(a.localId, undefined, { numeric: true, sensitivity: 'base' }));
+            const res = await fetch(`${this.apiBase}/${this.state.lang}/cards?${params.toString()}`);
+            results = await res.json();
+        }
 
-                    const limit = parseInt(document.getElementById('pageSizeSelector').value);
-                    this.state.cards = results.slice(0, limit);
-                    this.renderGrid(this.state.cards);
-                } catch (e) {
-                    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px;">No cards found.</div>';
-                } finally {
-                    loader.classList.add('hidden');
-                }
-            }
+        // Sort by Local ID descending
+        results.sort((a, b) => b.localId.localeCompare(a.localId, undefined, { numeric: true, sensitivity: 'base' }));
+
+        const limit = parseInt(document.getElementById('pageSizeSelector').value);
+        this.state.cards = results.slice(0, limit);
+        this.renderGrid(this.state.cards);
+    } catch (e) {
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px;">No cards found.</div>';
+    } finally {
+        loader.classList.add('hidden');
+    }
+}
 
             renderGrid(cards) {
                 const grid = document.getElementById('search-grid');
